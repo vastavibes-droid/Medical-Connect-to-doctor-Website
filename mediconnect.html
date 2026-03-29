@@ -1,0 +1,1661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediConnect — Patient·Doctor Portal</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏥</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+<style>
+/* ════════════════════════════════════════
+   DESIGN TOKENS
+════════════════════════════════════════ */
+:root {
+  --night:   #080c10;
+  --dark:    #0f1520;
+  --card:    #141c28;
+  --card2:   #1a2435;
+  --border:  rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --cyan:    #00d4b8;
+  --cyan2:   #00a896;
+  --cyan-dim: rgba(0,212,184,0.12);
+  --rose:    #ff6b8a;
+  --rose-dim: rgba(255,107,138,0.12);
+  --gold:    #f5c842;
+  --gold-dim: rgba(245,200,66,0.1);
+  --text:    #e8edf5;
+  --text2:   #8a9bb5;
+  --text3:   #4a5a72;
+  --r:       16px;
+  --r2:      24px;
+}
+
+/* ════════════════════════════════════════
+   RESET + BASE
+════════════════════════════════════════ */
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body {
+  font-family:'Syne',sans-serif;
+  background:var(--night);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* noise texture overlay */
+body::before {
+  content:'';
+  position:fixed; inset:0; z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none;
+  opacity:0.4;
+}
+
+/* ════════════════════════════════════════
+   ANIMATED BACKGROUND ORBS
+════════════════════════════════════════ */
+.orb {
+  position:fixed;
+  border-radius:50%;
+  filter:blur(80px);
+  pointer-events:none;
+  z-index:0;
+  animation:drift 20s ease-in-out infinite;
+}
+.orb-1 { width:500px;height:500px;background:radial-gradient(circle,rgba(0,212,184,0.08),transparent 70%);top:-100px;left:-100px;animation-delay:0s; }
+.orb-2 { width:400px;height:400px;background:radial-gradient(circle,rgba(255,107,138,0.06),transparent 70%);bottom:-100px;right:-50px;animation-delay:-8s; }
+.orb-3 { width:350px;height:350px;background:radial-gradient(circle,rgba(245,200,66,0.05),transparent 70%);top:40%;left:40%;animation-delay:-14s; }
+@keyframes drift {
+  0%,100%{transform:translate(0,0) scale(1);}
+  33%{transform:translate(30px,-40px) scale(1.05);}
+  66%{transform:translate(-20px,30px) scale(0.97);}
+}
+
+/* ════════════════════════════════════════
+   NAVIGATION
+════════════════════════════════════════ */
+nav {
+  position:sticky; top:0; z-index:500;
+  height:64px;
+  display:flex; align-items:center; gap:1rem;
+  padding:0 2rem;
+  background:rgba(8,12,16,0.85);
+  backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--border);
+}
+.logo {
+  font-family:'Cormorant Garamond',serif;
+  font-size:1.6rem;
+  font-weight:700;
+  color:var(--cyan);
+  letter-spacing:-0.5px;
+  flex:1;
+  display:flex; align-items:center; gap:8px;
+}
+.logo-pulse {
+  width:10px; height:10px;
+  border-radius:50%;
+  background:var(--cyan);
+  box-shadow:0 0 12px var(--cyan);
+  animation:livePulse 2s ease-in-out infinite;
+}
+@keyframes livePulse { 0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.8);} }
+.logo span { color:var(--rose); }
+
+#navUser {
+  font-size:0.75rem; color:var(--text2);
+  background:var(--card);
+  border:1px solid var(--border2);
+  padding:5px 14px; border-radius:99px;
+  display:none;
+}
+#navLogout {
+  font-family:'Syne',sans-serif;
+  font-size:0.75rem; font-weight:600;
+  color:var(--text2);
+  background:none;
+  border:1px solid var(--border);
+  padding:6px 16px; border-radius:99px;
+  cursor:pointer; transition:all 0.2s;
+  display:none;
+}
+#navLogout:hover { border-color:var(--rose); color:var(--rose); }
+
+/* ════════════════════════════════════════
+   PAGE SYSTEM
+════════════════════════════════════════ */
+.page { display:none; position:relative; z-index:1; }
+.page.active { display:block; }
+.page-enter { animation:pageIn 0.4s cubic-bezier(.22,1,.36,1) both; }
+@keyframes pageIn { from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);} }
+
+/* ════════════════════════════════════════
+   LANDING / HERO
+════════════════════════════════════════ */
+#page-landing {
+  min-height:calc(100vh - 64px);
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:4rem 2rem;
+}
+#page-landing.active { display:flex; }
+
+.hero-badge {
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--cyan-dim);
+  border:1px solid rgba(0,212,184,0.25);
+  color:var(--cyan);
+  font-size:0.72rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:2px;
+  padding:6px 18px; border-radius:99px;
+  margin-bottom:2rem;
+  animation:fadeSlide 0.6s 0.1s both;
+}
+@keyframes fadeSlide { from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);} }
+
+.hero-title {
+  font-family:'Cormorant Garamond',serif;
+  font-size:clamp(3rem,7vw,5.5rem);
+  font-weight:700;
+  line-height:1.05;
+  letter-spacing:-1px;
+  margin-bottom:1.5rem;
+  animation:fadeSlide 0.6s 0.2s both;
+}
+.hero-title .hl { color:var(--cyan); font-style:italic; }
+.hero-title .hl2 { color:var(--rose); }
+
+.hero-sub {
+  font-size:1.05rem;
+  color:var(--text2);
+  max-width:520px;
+  line-height:1.75;
+  margin-bottom:3rem;
+  animation:fadeSlide 0.6s 0.3s both;
+}
+
+.hero-btns {
+  display:flex; gap:14px; flex-wrap:wrap; justify-content:center;
+  animation:fadeSlide 0.6s 0.4s both;
+}
+.hbtn {
+  padding:14px 36px;
+  border-radius:14px;
+  font-family:'Syne',sans-serif;
+  font-size:0.92rem; font-weight:700;
+  cursor:pointer; transition:all 0.25s;
+  border:none; text-decoration:none;
+  display:inline-flex; align-items:center; gap:8px;
+  letter-spacing:0.3px;
+}
+.hbtn-cyan { background:var(--cyan); color:var(--night); }
+.hbtn-cyan:hover { background:#00efd1; transform:translateY(-2px); box-shadow:0 8px 30px rgba(0,212,184,0.35); }
+.hbtn-outline { background:transparent; color:var(--text); border:1.5px solid var(--border2); }
+.hbtn-outline:hover { border-color:var(--cyan); color:var(--cyan); transform:translateY(-2px); }
+
+.hero-stats {
+  display:flex; gap:3rem; margin-top:4rem; flex-wrap:wrap; justify-content:center;
+  animation:fadeSlide 0.6s 0.5s both;
+}
+.hstat { text-align:center; }
+.hstat-num {
+  font-family:'Cormorant Garamond',serif;
+  font-size:2.2rem; font-weight:700; color:var(--cyan);
+  line-height:1;
+}
+.hstat-lbl { font-size:0.72rem; color:var(--text3); margin-top:4px; text-transform:uppercase; letter-spacing:1px; }
+
+/* feature cards row */
+.features-row {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:1rem;
+  max-width:900px; margin:3.5rem auto 0; width:100%;
+  animation:fadeSlide 0.6s 0.6s both;
+}
+.feat-card {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:1.5rem;
+  text-align:left;
+  transition:all 0.3s;
+}
+.feat-card:hover { border-color:rgba(0,212,184,0.3); transform:translateY(-4px); box-shadow:0 16px 40px rgba(0,0,0,0.4); }
+.feat-icon { font-size:1.6rem; margin-bottom:0.75rem; }
+.feat-title { font-size:0.9rem; font-weight:700; margin-bottom:4px; }
+.feat-desc { font-size:0.78rem; color:var(--text2); line-height:1.6; }
+
+/* ════════════════════════════════════════
+   AUTH PAGE
+════════════════════════════════════════ */
+#page-auth {
+  min-height:calc(100vh - 64px);
+  display:none; place-items:center;
+  padding:3rem 1.5rem;
+}
+#page-auth.active { display:grid; }
+
+.auth-wrap {
+  width:100%; max-width:440px;
+  background:var(--card);
+  border:1px solid var(--border2);
+  border-radius:var(--r2);
+  padding:2.5rem 2rem;
+  box-shadow:0 24px 80px rgba(0,0,0,0.6);
+  animation:pageIn 0.4s both;
+}
+.auth-header { text-align:center; margin-bottom:2rem; }
+.auth-header .ico { font-size:2.5rem; margin-bottom:0.75rem; display:block; }
+.auth-header h2 {
+  font-family:'Cormorant Garamond',serif;
+  font-size:1.8rem; font-weight:700;
+  margin-bottom:6px;
+}
+.auth-header p { font-size:0.82rem; color:var(--text2); }
+
+.role-toggle {
+  display:grid; grid-template-columns:1fr 1fr;
+  background:var(--dark);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:4px; gap:4px;
+  margin-bottom:1.75rem;
+}
+.rtbtn {
+  padding:10px;
+  border:none; border-radius:9px;
+  font-family:'Syne',sans-serif;
+  font-size:0.82rem; font-weight:600;
+  cursor:pointer; transition:all 0.2s;
+  background:none; color:var(--text2);
+}
+.rtbtn.on { background:var(--cyan); color:var(--night); }
+
+.ai { /* auth input */
+  width:100%;
+  padding:12px 15px;
+  background:var(--dark);
+  border:1.5px solid var(--border);
+  border-radius:11px;
+  font-family:'Syne',sans-serif;
+  font-size:0.88rem; color:var(--text);
+  outline:none; transition:border-color 0.2s;
+  margin-bottom:10px;
+}
+.ai:focus { border-color:var(--cyan); }
+.ai::placeholder { color:var(--text3); }
+
+.abtn {
+  width:100%;
+  padding:13px;
+  border:none; border-radius:11px;
+  font-family:'Syne',sans-serif;
+  font-size:0.9rem; font-weight:700;
+  cursor:pointer; transition:all 0.25s;
+  margin-top:4px; letter-spacing:0.3px;
+}
+.abtn-main { background:var(--cyan); color:var(--night); }
+.abtn-main:hover { background:#00efd1; transform:translateY(-1px); box-shadow:0 6px 20px rgba(0,212,184,0.3); }
+.abtn-ghost { background:none; color:var(--cyan); font-weight:500; font-size:0.8rem; margin-top:10px; }
+.abtn-ghost:hover { text-decoration:underline; }
+
+.aerr {
+  background:var(--rose-dim); border:1px solid rgba(255,107,138,0.3);
+  color:var(--rose); border-radius:10px;
+  font-size:0.78rem; padding:10px 14px;
+  margin-bottom:10px; display:none;
+  animation:pageIn 0.2s both;
+}
+.aerr.on { display:block; }
+
+/* ════════════════════════════════════════
+   PATIENT FORM
+════════════════════════════════════════ */
+.form-shell {
+  max-width:820px; margin:0 auto;
+  padding:2.5rem 1.5rem;
+}
+.form-page-head { margin-bottom:2.5rem; }
+.form-page-head h1 {
+  font-family:'Cormorant Garamond',serif;
+  font-size:2.4rem; font-weight:700;
+  margin-bottom:6px;
+}
+.form-page-head p { color:var(--text2); font-size:0.88rem; }
+
+/* step indicator */
+.step-bar {
+  display:flex; gap:6px; margin-bottom:2.5rem;
+  align-items:center;
+}
+.step {
+  display:flex; align-items:center; gap:8px;
+  font-size:0.72rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:0.8px;
+  color:var(--text3);
+  cursor:pointer; transition:color 0.2s;
+}
+.step.done { color:var(--cyan); }
+.step.active { color:var(--text); }
+.step-num {
+  width:26px; height:26px;
+  border-radius:50%;
+  border:1.5px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.7rem; font-weight:700;
+  transition:all 0.3s;
+}
+.step.done .step-num { background:var(--cyan); border-color:var(--cyan); color:var(--night); }
+.step.active .step-num { border-color:var(--cyan); color:var(--cyan); }
+.step-line { flex:1; height:1px; background:var(--border); }
+.step-line.done { background:var(--cyan); transition:background 0.4s; }
+
+/* section card */
+.s-card {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--r2);
+  padding:2rem;
+  margin-bottom:1.25rem;
+  box-shadow:0 4px 24px rgba(0,0,0,0.3);
+  transition:border-color 0.3s;
+  animation:pageIn 0.4s both;
+}
+.s-card:hover { border-color:var(--border2); }
+.card-title {
+  display:flex; align-items:center; gap:12px;
+  margin-bottom:1.5rem; padding-bottom:1.25rem;
+  border-bottom:1px solid var(--border);
+}
+.ctico {
+  width:42px; height:42px;
+  border-radius:12px;
+  background:var(--cyan-dim);
+  border:1px solid rgba(0,212,184,0.2);
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.1rem; flex-shrink:0;
+}
+.card-title h3 { font-size:1rem; font-weight:700; }
+.card-title p { font-size:0.75rem; color:var(--text2); margin-top:2px; }
+
+/* form field */
+.fg { margin-bottom:1.1rem; }
+.fg label {
+  display:block;
+  font-size:0.7rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:0.8px;
+  color:var(--text3); margin-bottom:6px;
+}
+.fg input, .fg select, .fg textarea {
+  width:100%;
+  padding:11px 14px;
+  background:var(--dark);
+  border:1.5px solid var(--border);
+  border-radius:11px;
+  font-family:'Syne',sans-serif;
+  font-size:0.87rem; color:var(--text);
+  outline:none; transition:border-color 0.2s, box-shadow 0.2s;
+  resize:vertical;
+}
+.fg input:focus, .fg select:focus, .fg textarea:focus {
+  border-color:var(--cyan);
+  box-shadow:0 0 0 3px rgba(0,212,184,0.1);
+}
+.fg select option { background:var(--dark); }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; }
+
+/* chip selector */
+.chips { display:flex; flex-wrap:wrap; gap:7px; }
+.chip {
+  padding:7px 15px;
+  border:1.5px solid var(--border);
+  border-radius:99px;
+  font-family:'Syne',sans-serif;
+  font-size:0.76rem; font-weight:600;
+  cursor:pointer; user-select:none;
+  transition:all 0.2s; color:var(--text2);
+}
+.chip input { display:none; }
+.chip:has(input:checked) {
+  background:var(--cyan-dim);
+  border-color:var(--cyan);
+  color:var(--cyan);
+}
+.chip.rose:has(input:checked) { background:var(--rose-dim); border-color:var(--rose); color:var(--rose); }
+.chip.gold:has(input:checked) { background:var(--gold-dim); border-color:var(--gold); color:var(--gold); }
+
+/* upload zone */
+.upload-zone {
+  border:2px dashed var(--border);
+  border-radius:var(--r);
+  padding:2.5rem;
+  text-align:center;
+  cursor:pointer;
+  transition:all 0.25s;
+  background:var(--dark);
+  position:relative; overflow:hidden;
+}
+.upload-zone::before {
+  content:'';
+  position:absolute; inset:0;
+  background:radial-gradient(circle at center, var(--cyan-dim), transparent 70%);
+  opacity:0; transition:opacity 0.3s;
+}
+.upload-zone:hover { border-color:var(--cyan); }
+.upload-zone:hover::before { opacity:1; }
+.upload-zone .uico { font-size:2.2rem; margin-bottom:0.75rem; position:relative; z-index:1; }
+.upload-zone p { font-size:0.82rem; color:var(--text2); position:relative; z-index:1; }
+.upload-zone strong { color:var(--cyan); }
+#filePreview {
+  margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;
+  justify-content:center;
+}
+.fpchip {
+  background:var(--cyan-dim);
+  border:1px solid rgba(0,212,184,0.25);
+  color:var(--cyan);
+  border-radius:8px; padding:5px 12px;
+  font-size:0.73rem; font-weight:600;
+  display:flex; align-items:center; gap:5px;
+  animation:popIn 0.2s both;
+}
+@keyframes popIn { from{opacity:0;transform:scale(0.8);}to{opacity:1;transform:scale(1);} }
+
+/* submit area */
+.submit-area {
+  display:flex; justify-content:flex-end; gap:10px; margin-top:2rem;
+  padding-top:1.5rem; border-top:1px solid var(--border);
+}
+.sbtn {
+  padding:13px 32px;
+  border:none; border-radius:12px;
+  font-family:'Syne',sans-serif;
+  font-size:0.9rem; font-weight:700;
+  cursor:pointer; transition:all 0.25s;
+  letter-spacing:0.3px;
+}
+.sbtn-main { background:var(--cyan); color:var(--night); }
+.sbtn-main:hover { background:#00efd1; transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,212,184,0.35); }
+.sbtn-main:disabled { background:var(--text3); cursor:not-allowed; transform:none; box-shadow:none; }
+.sbtn-ghost { background:none; border:1.5px solid var(--border); color:var(--text2); }
+.sbtn-ghost:hover { border-color:var(--border2); color:var(--text); }
+
+/* progress bar */
+.prog-bar {
+  height:3px; background:var(--border);
+  border-radius:99px; margin-bottom:1.5rem;
+  overflow:hidden; display:none;
+}
+.prog-bar.on { display:block; }
+.prog-fill {
+  height:100%; width:0%;
+  background:linear-gradient(90deg, var(--cyan), #00efd1);
+  border-radius:99px; transition:width 0.4s ease;
+  box-shadow:0 0 12px var(--cyan);
+}
+
+/* success screen */
+#successScreen {
+  display:none;
+  text-align:center; padding:4rem 2rem;
+  animation:pageIn 0.5s both;
+}
+#successScreen.on { display:block; }
+.success-icon {
+  width:80px; height:80px;
+  border-radius:50%;
+  background:var(--cyan-dim);
+  border:2px solid var(--cyan);
+  display:flex; align-items:center; justify-content:center;
+  font-size:2rem;
+  margin:0 auto 1.5rem;
+  animation:scaleIn 0.5s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes scaleIn { from{transform:scale(0);}to{transform:scale(1);} }
+#successScreen h2 {
+  font-family:'Cormorant Garamond',serif;
+  font-size:2.2rem; font-weight:700;
+  color:var(--cyan); margin-bottom:0.75rem;
+}
+#successScreen p { color:var(--text2); font-size:0.9rem; line-height:1.7; max-width:420px; margin:0 auto 2rem; }
+
+/* ════════════════════════════════════════
+   MY QUERIES (patient history)
+════════════════════════════════════════ */
+.mq-shell { max-width:780px; margin:0 auto; padding:2.5rem 1.5rem; }
+.mq-item {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:1.5rem;
+  margin-bottom:1rem;
+  box-shadow:0 4px 20px rgba(0,0,0,0.3);
+  transition:border-color 0.2s;
+  animation:pageIn 0.3s both;
+}
+.mq-item:hover { border-color:var(--border2); }
+.mq-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1rem; }
+.mq-title { font-size:0.95rem; font-weight:700; }
+.mq-sub { font-size:0.75rem; color:var(--text3); margin-top:3px; }
+.mq-body { font-size:0.83rem; color:var(--text2); line-height:1.65; margin-bottom:1rem; }
+.dr-reply {
+  background:var(--cyan-dim);
+  border:1px solid rgba(0,212,184,0.2);
+  border-radius:12px;
+  padding:1rem 1.25rem;
+  font-size:0.83rem; line-height:1.65;
+  color:var(--text);
+}
+.dr-reply-label {
+  font-size:0.68rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:1px;
+  color:var(--cyan); margin-bottom:6px; display:block;
+}
+.awaiting {
+  color:var(--text3); font-size:0.78rem;
+  font-style:italic;
+  display:flex; align-items:center; gap:6px;
+}
+
+/* ════════════════════════════════════════
+   DOCTOR DASHBOARD
+════════════════════════════════════════ */
+.dash-shell { max-width:1200px; margin:0 auto; padding:2rem 1.5rem; }
+.dash-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; flex-wrap:wrap; gap:1rem; }
+.dash-head h1 {
+  font-family:'Cormorant Garamond',serif;
+  font-size:2.2rem; font-weight:700;
+}
+.live-dot {
+  display:flex; align-items:center; gap:8px;
+  font-size:0.75rem; color:var(--text3);
+}
+.live-dot-inner {
+  width:10px; height:10px;
+  border-radius:50%; background:#2ecc71;
+  box-shadow:0 0 10px #2ecc71;
+  animation:livePulse 2s ease-in-out infinite;
+}
+
+/* stats row */
+.stats-grid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:1rem;
+  margin-bottom:2rem;
+}
+.stat-tile {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:1.25rem 1.5rem;
+  transition:all 0.2s;
+}
+.stat-tile:hover { border-color:var(--border2); transform:translateY(-2px); }
+.stat-num {
+  font-family:'Cormorant Garamond',serif;
+  font-size:2.4rem; font-weight:700;
+  line-height:1;
+}
+.stat-lbl { font-size:0.72rem; color:var(--text3); margin-top:4px; text-transform:uppercase; letter-spacing:0.8px; }
+
+/* inbox layout */
+.inbox-layout { display:grid; grid-template-columns:340px 1fr; gap:1.25rem; min-height:600px; }
+.inbox-panel { display:flex; flex-direction:column; gap:8px; }
+
+/* filter bar */
+.filter-bar { display:flex; gap:6px; margin-bottom:12px; }
+.fbtn {
+  flex:1; padding:8px 6px;
+  border:1.5px solid var(--border);
+  border-radius:10px;
+  background:none; color:var(--text2);
+  font-family:'Syne',sans-serif;
+  font-size:0.72rem; font-weight:700;
+  cursor:pointer; transition:all 0.2s;
+  text-transform:uppercase; letter-spacing:0.5px;
+}
+.fbtn.on { background:var(--cyan); border-color:var(--cyan); color:var(--night); }
+
+/* query card */
+.qcard {
+  background:var(--card);
+  border:1.5px solid var(--border);
+  border-radius:var(--r);
+  padding:1.1rem 1.25rem;
+  cursor:pointer; transition:all 0.2s;
+  position:relative; overflow:hidden;
+  animation:pageIn 0.3s both;
+}
+.qcard::before {
+  content:''; position:absolute; left:0; top:0; bottom:0;
+  width:3px; background:var(--cyan);
+  transform:scaleY(0); transition:transform 0.2s;
+  border-radius:0 2px 2px 0;
+}
+.qcard:hover::before, .qcard.sel::before { transform:scaleY(1); }
+.qcard:hover, .qcard.sel {
+  border-color:rgba(0,212,184,0.4);
+  box-shadow:0 4px 20px rgba(0,0,0,0.4);
+}
+.qcard.sel { background:var(--card2); }
+.qcard-name { font-size:0.9rem; font-weight:700; margin-bottom:3px; }
+.qcard-sub { font-size:0.75rem; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.qcard-foot { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+.qcard-time { font-size:0.68rem; color:var(--text3); }
+.unread-dot { position:absolute; top:10px; right:10px; width:8px; height:8px; border-radius:50%; background:var(--rose); box-shadow:0 0 8px var(--rose); }
+
+/* badges */
+.badge {
+  font-size:0.62rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.8px;
+  padding:3px 10px; border-radius:99px;
+}
+.b-new { background:rgba(0,212,184,0.15); color:var(--cyan); border:1px solid rgba(0,212,184,0.25); }
+.b-urgent { background:rgba(255,107,138,0.15); color:var(--rose); border:1px solid rgba(255,107,138,0.25); }
+.b-replied { background:rgba(46,204,113,0.12); color:#2ecc71; border:1px solid rgba(46,204,113,0.2); }
+.b-routine { background:var(--gold-dim); color:var(--gold); border:1px solid rgba(245,200,66,0.2); }
+
+/* detail pane */
+.detail-pane {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--r2);
+  box-shadow:0 8px 40px rgba(0,0,0,0.4);
+  display:flex; flex-direction:column;
+  overflow:hidden; min-height:600px;
+}
+.detail-top {
+  padding:1.5rem;
+  background:linear-gradient(135deg, var(--card2), var(--card));
+  border-bottom:1px solid var(--border);
+}
+.pat-row { display:flex; align-items:center; gap:1rem; }
+.avatar {
+  width:54px; height:54px; border-radius:50%;
+  background:linear-gradient(135deg, var(--cyan2), var(--cyan));
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Cormorant Garamond',serif;
+  font-size:1.3rem; font-weight:700; color:var(--night);
+  flex-shrink:0; font-style:italic;
+  box-shadow:0 4px 16px rgba(0,212,184,0.3);
+}
+.pat-name { font-family:'Cormorant Garamond',serif; font-size:1.2rem; font-weight:700; }
+.pat-sub { font-size:0.75rem; color:var(--text2); margin-top:2px; }
+
+.detail-body { padding:1.5rem; flex:1; overflow-y:auto; }
+.meta-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:1.25rem; }
+.meta-pill {
+  background:var(--dark);
+  border:1px solid var(--border);
+  border-radius:9px; padding:6px 13px;
+  font-size:0.73rem; color:var(--text2);
+}
+.meta-pill b { color:var(--text); font-weight:700; }
+.section-h {
+  font-size:0.68rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:1.2px;
+  color:var(--text3); margin-bottom:8px; margin-top:1.25rem;
+}
+.query-bubble {
+  background:var(--dark);
+  border-left:3px solid var(--rose);
+  border-radius:0 12px 12px 0;
+  padding:1rem 1.25rem;
+  font-size:0.86rem; line-height:1.7;
+  color:var(--text2); margin-bottom:0;
+}
+.report-row { display:flex; flex-wrap:wrap; gap:8px; }
+.report-link {
+  display:inline-flex; align-items:center; gap:6px;
+  background:var(--cyan-dim);
+  border:1px solid rgba(0,212,184,0.2);
+  color:var(--cyan); border-radius:9px;
+  padding:7px 14px; font-size:0.75rem; font-weight:600;
+  cursor:pointer; transition:all 0.2s; text-decoration:none;
+}
+.report-link:hover { background:var(--cyan); color:var(--night); }
+
+/* reply zone */
+.reply-zone {
+  border-top:1px solid var(--border);
+  padding:1.25rem 1.5rem;
+  background:rgba(8,12,16,0.5);
+}
+.reply-zone label {
+  font-size:0.68rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:1px;
+  color:var(--text3); display:block; margin-bottom:8px;
+}
+.reply-zone textarea {
+  width:100%; padding:12px 14px;
+  background:var(--dark);
+  border:1.5px solid var(--border);
+  border-radius:12px;
+  font-family:'Syne',sans-serif;
+  font-size:0.86rem; color:var(--text);
+  resize:vertical; outline:none;
+  transition:border-color 0.2s, box-shadow 0.2s;
+  min-height:90px;
+}
+.reply-zone textarea:focus { border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,212,184,0.08); }
+.reply-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+.rbtn {
+  padding:9px 22px; border:none; border-radius:10px;
+  font-family:'Syne',sans-serif; font-size:0.8rem; font-weight:700;
+  cursor:pointer; transition:all 0.2s; letter-spacing:0.3px;
+}
+.rbtn-main { background:var(--cyan); color:var(--night); }
+.rbtn-main:hover { background:#00efd1; transform:translateY(-1px); box-shadow:0 4px 16px rgba(0,212,184,0.3); }
+.rbtn-flag { background:none; border:1.5px solid var(--border); color:var(--text2); }
+.rbtn-flag:hover { border-color:var(--rose); color:var(--rose); }
+
+.empty-pane {
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; height:100%; color:var(--text3);
+  gap:0.75rem; padding:3rem;
+}
+.empty-pane .eico { font-size:3rem; opacity:0.4; }
+.empty-pane p { font-size:0.85rem; text-align:center; line-height:1.6; }
+
+/* ════════════════════════════════════════
+   GLOBAL TOAST
+════════════════════════════════════════ */
+#toast {
+  position:fixed; bottom:2rem; right:2rem; z-index:9999;
+  padding:14px 22px; border-radius:14px;
+  font-family:'Syne',sans-serif; font-size:0.85rem; font-weight:600;
+  box-shadow:0 16px 40px rgba(0,0,0,0.6);
+  transform:translateY(80px) scale(0.95);
+  opacity:0; transition:all 0.35s cubic-bezier(.34,1.56,.64,1);
+  max-width:360px; display:flex; align-items:center; gap:10px;
+  pointer-events:none;
+}
+#toast.on { transform:translateY(0) scale(1); opacity:1; }
+#toast.ok { background:var(--cyan); color:var(--night); }
+#toast.err { background:var(--rose); color:white; }
+#toast.info { background:var(--card2); color:var(--text); border:1px solid var(--border2); }
+
+/* ════════════════════════════════════════
+   LOADING SPINNER
+════════════════════════════════════════ */
+.spin {
+  width:20px; height:20px; border-radius:50%;
+  border:2px solid transparent;
+  border-top-color:currentColor;
+  animation:spin 0.7s linear infinite; display:inline-block;
+}
+@keyframes spin { to{transform:rotate(360deg);} }
+
+/* ════════════════════════════════════════
+   NOTIFICATION BELL ANIMATION
+════════════════════════════════════════ */
+@keyframes bellRing {
+  0%,100%{transform:rotate(0);}
+  10%{transform:rotate(15deg);}
+  20%{transform:rotate(-12deg);}
+  30%{transform:rotate(10deg);}
+  40%{transform:rotate(-8deg);}
+  50%{transform:rotate(0);}
+}
+.bell-ring { animation:bellRing 0.8s ease; }
+
+/* ════════════════════════════════════════
+   RESPONSIVE
+════════════════════════════════════════ */
+@media(max-width:900px){
+  .inbox-layout { grid-template-columns:1fr; }
+  .stats-grid { grid-template-columns:1fr 1fr; }
+  .features-row { grid-template-columns:1fr; }
+}
+@media(max-width:600px){
+  .g2,.g3 { grid-template-columns:1fr; }
+  .stats-grid { grid-template-columns:1fr 1fr; }
+  .hero-title { font-size:2.8rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- background orbs -->
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ════════════ NAVIGATION ════════════ -->
+<nav>
+  <div class="logo">
+    <div class="logo-pulse"></div>
+    Medi<span>Connect</span>
+  </div>
+  <span id="navUser"></span>
+  <button id="navLogout" onclick="doLogout()">Sign Out</button>
+</nav>
+
+<!-- ════════════ LANDING ════════════ -->
+<div id="page-landing" class="page">
+  <span class="hero-badge">🔴 Live Portal · Real-Time</span>
+  <h1 class="hero-title">Your doctor,<br><span class="hl">always</span> <span class="hl2">connected</span></h1>
+  <p class="hero-sub">Submit symptoms, upload reports, and receive expert medical replies — securely, instantly, from anywhere.</p>
+  <div class="hero-btns">
+    <button class="hbtn hbtn-cyan" onclick="goAuth('patient')">👤 I'm a Patient</button>
+    <button class="hbtn hbtn-outline" onclick="goAuth('doctor')">🩺 Doctor Login</button>
+  </div>
+  <div class="hero-stats">
+    <div class="hstat"><div class="hstat-num" id="heroTotal">—</div><div class="hstat-lbl">Queries Sent</div></div>
+    <div class="hstat"><div class="hstat-num" id="heroReplied">—</div><div class="hstat-lbl">Replied</div></div>
+    <div class="hstat"><div class="hstat-num">~2h</div><div class="hstat-lbl">Avg Response</div></div>
+    <div class="hstat"><div class="hstat-num">100%</div><div class="hstat-lbl">Secure</div></div>
+  </div>
+  <div class="features-row">
+    <div class="feat-card">
+      <div class="feat-icon">📋</div>
+      <div class="feat-title">Smart Medical Forms</div>
+      <div class="feat-desc">Structured symptom capture with file uploads for lab reports, scans, and prescriptions.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">⚡</div>
+      <div class="feat-title">Real-Time Delivery</div>
+      <div class="feat-desc">Queries appear in the doctor's inbox instantly — no email delays, no missed messages.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">🔒</div>
+      <div class="feat-title">End-to-End Secure</div>
+      <div class="feat-desc">Firebase Auth + Firestore rules ensure only the right people see patient data.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ AUTH ════════════ -->
+<div id="page-auth" class="page">
+  <div class="auth-wrap">
+    <div class="auth-header">
+      <span class="ico">🏥</span>
+      <h2>Welcome back</h2>
+      <p>Sign in to access your portal</p>
+    </div>
+    <div class="role-toggle">
+      <button class="rtbtn on" id="rolePatient" onclick="setRole('patient',this)">👤 Patient</button>
+      <button class="rtbtn" id="roleDoctor" onclick="setRole('doctor',this)">🩺 Doctor</button>
+    </div>
+    <div id="authErr" class="aerr"></div>
+    <div id="formSignIn">
+      <input class="ai" id="siEmail" type="email" placeholder="Email address" autocomplete="email">
+      <input class="ai" id="siPass" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="abtn abtn-main" onclick="doSignIn()">Sign In →</button>
+      <button class="abtn abtn-ghost" onclick="toggleReg(true)">New patient? Create account</button>
+    </div>
+    <div id="formRegister" style="display:none">
+      <input class="ai" id="regName" type="text" placeholder="Full Name" autocomplete="name">
+      <input class="ai" id="regEmail" type="email" placeholder="Email address" autocomplete="email">
+      <input class="ai" id="regPass" type="password" placeholder="Password (min 6 chars)">
+      <button class="abtn abtn-main" onclick="doRegister()">Create Account →</button>
+      <button class="abtn abtn-ghost" onclick="toggleReg(false)">← Back to sign in</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ PATIENT FORM ════════════ -->
+<div id="page-patient" class="page">
+<div class="form-shell">
+  <div class="form-page-head">
+    <h1>New Medical Query</h1>
+    <p>Complete the form below — your doctor will receive it instantly.</p>
+  </div>
+
+  <!-- STEP BAR -->
+  <div class="step-bar">
+    <div class="step active" id="st1"><div class="step-num">1</div><span>Profile</span></div>
+    <div class="step-line" id="sl1"></div>
+    <div class="step" id="st2"><div class="step-num">2</div><span>Medical</span></div>
+    <div class="step-line" id="sl2"></div>
+    <div class="step" id="st3"><div class="step-num">3</div><span>Query</span></div>
+    <div class="step-line" id="sl3"></div>
+    <div class="step" id="st4"><div class="step-num">4</div><span>Files</span></div>
+  </div>
+
+  <div id="progBar" class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+
+  <!-- SUCCESS -->
+  <div id="successScreen">
+    <div class="success-icon">✓</div>
+    <h2>Query Sent!</h2>
+    <p>Your query has been delivered to your doctor in real-time. You'll receive a reply shortly — check "My Queries" to track it.</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <button class="sbtn sbtn-main" onclick="showMyQueries()">View My Queries →</button>
+      <button class="sbtn sbtn-ghost" onclick="resetForm()">Submit Another</button>
+    </div>
+  </div>
+
+  <form id="patientForm" onsubmit="submitQuery(event)">
+
+    <!-- ── SECTION 1: PERSONAL ── -->
+    <div class="s-card" style="animation-delay:0.05s">
+      <div class="card-title">
+        <div class="ctico">👤</div>
+        <div><h3>Personal Information</h3><p>Your identity for the doctor's record</p></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label>Full Name *</label><input type="text" id="p_name" required placeholder="Priya Sharma" autocomplete="name"></div>
+        <div class="fg"><label>Date of Birth *</label><input type="date" id="p_dob" required></div>
+        <div class="fg"><label>Phone Number</label><input type="tel" id="p_phone" placeholder="+91 98765 43210" autocomplete="tel"></div>
+        <div class="fg"><label>Patient ID (if returning)</label><input type="text" id="p_pid" placeholder="Leave blank if new patient"></div>
+      </div>
+      <div class="fg">
+        <label>Assigned Doctor *</label>
+        <select id="p_doctor" required>
+          <option value="">Select your doctor</option>
+          <option value="Dr. Anita Sharma — Cardiology">Dr. Anita Sharma — Cardiology</option>
+          <option value="Dr. Ravi Mehta — General Medicine">Dr. Ravi Mehta — General Medicine</option>
+          <option value="Dr. Sunita Patel — Endocrinology">Dr. Sunita Patel — Endocrinology</option>
+          <option value="Dr. Karan Bose — Pulmonology">Dr. Karan Bose — Pulmonology</option>
+          <option value="Dr. Neha Gupta — Neurology">Dr. Neha Gupta — Neurology</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ── SECTION 2: MEDICAL BG ── -->
+    <div class="s-card" style="animation-delay:0.1s">
+      <div class="card-title">
+        <div class="ctico">📋</div>
+        <div><h3>Medical Background</h3><p>Current health context</p></div>
+      </div>
+      <div class="g3">
+        <div class="fg">
+          <label>Blood Group</label>
+          <select id="p_blood">
+            <option>Select</option>
+            <option>A+</option><option>A−</option><option>B+</option><option>B−</option>
+            <option>O+</option><option>O−</option><option>AB+</option><option>AB−</option>
+          </select>
+        </div>
+        <div class="fg"><label>Height (cm)</label><input type="number" id="p_height" placeholder="165"></div>
+        <div class="fg"><label>Weight (kg)</label><input type="number" id="p_weight" placeholder="62"></div>
+      </div>
+      <div class="fg"><label>Current Medications</label><input type="text" id="p_meds" placeholder="e.g. Metformin 500mg, Amlodipine 5mg"></div>
+      <div class="fg">
+        <label>Known Allergies</label>
+        <div class="chips">
+          <label class="chip rose"><input type="checkbox" name="allergy" value="Penicillin">Penicillin</label>
+          <label class="chip rose"><input type="checkbox" name="allergy" value="Sulfa Drugs">Sulfa Drugs</label>
+          <label class="chip rose"><input type="checkbox" name="allergy" value="Aspirin">Aspirin</label>
+          <label class="chip rose"><input type="checkbox" name="allergy" value="Ibuprofen">Ibuprofen</label>
+          <label class="chip rose"><input type="checkbox" name="allergy" value="Latex">Latex</label>
+          <label class="chip rose"><input type="checkbox" name="allergy" value="None">✓ None</label>
+        </div>
+      </div>
+      <div class="fg" style="margin-top:0.75rem">
+        <label>Existing Conditions</label>
+        <div class="chips">
+          <label class="chip"><input type="checkbox" name="condition" value="Diabetes">Diabetes</label>
+          <label class="chip"><input type="checkbox" name="condition" value="Hypertension">Hypertension</label>
+          <label class="chip"><input type="checkbox" name="condition" value="Asthma">Asthma</label>
+          <label class="chip"><input type="checkbox" name="condition" value="Heart Disease">Heart Disease</label>
+          <label class="chip"><input type="checkbox" name="condition" value="Thyroid">Thyroid</label>
+          <label class="chip"><input type="checkbox" name="condition" value="Kidney">Kidney</label>
+          <label class="chip"><input type="checkbox" name="condition" value="None">✓ None</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 3: QUERY ── -->
+    <div class="s-card" style="animation-delay:0.15s">
+      <div class="card-title">
+        <div class="ctico" style="background:var(--rose-dim);border-color:rgba(255,107,138,0.2);">💬</div>
+        <div><h3>Your Query</h3><p>Describe everything in detail — the more the better</p></div>
+      </div>
+      <div class="g2">
+        <div class="fg">
+          <label>Query Type *</label>
+          <select id="p_qtype" required>
+            <option value="">Select query type</option>
+            <option>Report Review / Interpretation</option>
+            <option>Symptom Consultation</option>
+            <option>Medication Query</option>
+            <option>Follow-up / Post-procedure</option>
+            <option>Prescription Renewal</option>
+            <option>Second Opinion</option>
+            <option>General Health Advice</option>
+            <option>Emergency Guidance</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>Priority Level *</label>
+          <div class="chips" style="margin-top:6px">
+            <label class="chip"><input type="radio" name="priority" value="routine" checked>🟢 Routine</label>
+            <label class="chip gold"><input type="radio" name="priority" value="moderate">🟡 Moderate</label>
+            <label class="chip rose"><input type="radio" name="priority" value="urgent">🔴 Urgent</label>
+          </div>
+        </div>
+      </div>
+      <div class="fg"><label>Symptom Description *</label><textarea id="p_symptoms" rows="6" required placeholder="Describe your symptoms — when they started, how often, severity 1-10, what makes it better or worse, any recent changes..."></textarea></div>
+      <div class="fg"><label>Specific Questions for Doctor</label><textarea id="p_questions" rows="3" placeholder="e.g. Should I increase my dosage? My HbA1c was 7.8 — is that worrying? Can I fly with this condition?"></textarea></div>
+    </div>
+
+    <!-- ── SECTION 4: FILES ── -->
+    <div class="s-card" style="animation-delay:0.2s">
+      <div class="card-title">
+        <div class="ctico" style="background:var(--gold-dim);border-color:rgba(245,200,66,0.2);">📂</div>
+        <div><h3>Upload Medical Reports</h3><p>Lab results, scans, prescriptions, ECG — attach all that's relevant</p></div>
+      </div>
+      <div class="fg">
+        <label>Report Types Attached</label>
+        <div class="chips">
+          <label class="chip gold"><input type="checkbox" name="rtype" value="Blood Test">Blood Test</label>
+          <label class="chip gold"><input type="checkbox" name="rtype" value="Urine Test">Urine Test</label>
+          <label class="chip gold"><input type="checkbox" name="rtype" value="X-Ray">X-Ray</label>
+          <label class="chip gold"><input type="checkbox" name="rtype" value="MRI / CT Scan">MRI / CT</label>
+          <label class="chip gold"><input type="checkbox" name="rtype" value="ECG">ECG</label>
+          <label class="chip gold"><input type="checkbox" name="rtype" value="Prescription">Prescription</label>
+          <label class="chip gold"><input type="checkbox" name="rtype" value="Ultrasound">Ultrasound</label>
+        </div>
+      </div>
+      <div class="fg">
+        <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+          <div class="uico">📄</div>
+          <p><strong>Click to select files</strong> or drag & drop here</p>
+          <p style="margin-top:4px;font-size:0.75rem">PDF, JPG, PNG · max 5 MB each</p>
+          <input type="file" id="fileInput" multiple accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="previewFiles(this)">
+        </div>
+        <div id="filePreview"></div>
+      </div>
+      <div class="fg"><label>Notes about uploaded files</label><textarea id="p_fnotes" rows="2" placeholder="e.g. File 1 is from this week, File 2 is from 3 months ago for comparison"></textarea></div>
+    </div>
+
+    <div class="submit-area">
+      <button type="button" class="sbtn sbtn-ghost" onclick="resetForm()">Clear All</button>
+      <button type="submit" class="sbtn sbtn-main" id="submitBtn">Send to Doctor &nbsp;→</button>
+    </div>
+  </form>
+
+  <div style="text-align:center;margin-top:1.5rem">
+    <button class="sbtn sbtn-ghost" onclick="showMyQueries()" style="font-size:0.8rem;opacity:0.7">View my previous queries →</button>
+  </div>
+</div>
+</div>
+
+<!-- ════════════ MY QUERIES ════════════ -->
+<div id="page-myqueries" class="page">
+<div class="mq-shell">
+  <div style="display:flex;align-items:center;gap:1rem;margin-bottom:2rem">
+    <button class="sbtn sbtn-ghost" onclick="showPage('patient')" style="font-size:0.8rem;padding:9px 18px">← Back</button>
+    <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:700">My Queries</h2>
+  </div>
+  <div id="mqList"></div>
+</div>
+</div>
+
+<!-- ════════════ DOCTOR DASHBOARD ════════════ -->
+<div id="page-doctor" class="page">
+<div class="dash-shell">
+
+  <div class="dash-head">
+    <div>
+      <h1>Doctor Dashboard</h1>
+      <p style="font-size:0.82rem;color:var(--text3);margin-top:3px">Patient queries arrive here in real-time</p>
+    </div>
+    <div class="live-dot"><div class="live-dot-inner"></div>Live updates active</div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-tile"><div class="stat-num" id="sTotal">0</div><div class="stat-lbl">Total Queries</div></div>
+    <div class="stat-tile"><div class="stat-num" id="sNew" style="color:var(--cyan)">0</div><div class="stat-lbl">New / Unread</div></div>
+    <div class="stat-tile"><div class="stat-num" id="sUrgent" style="color:var(--rose)">0</div><div class="stat-lbl">Urgent</div></div>
+    <div class="stat-tile"><div class="stat-num" id="sReplied" style="color:#2ecc71">0</div><div class="stat-lbl">Replied</div></div>
+  </div>
+
+  <div class="inbox-layout">
+    <div>
+      <div class="filter-bar">
+        <button class="fbtn on" id="fa" onclick="filterQ('all',this)">All</button>
+        <button class="fbtn" id="fn" onclick="filterQ('new',this)">Unread</button>
+        <button class="fbtn" id="fu" onclick="filterQ('urgent',this)">Urgent</button>
+      </div>
+      <div id="inboxList">
+        <div class="empty-pane" style="height:200px">
+          <div class="eico">📭</div>
+          <p>No queries yet</p>
+        </div>
+      </div>
+    </div>
+    <div class="detail-pane" id="detailPane">
+      <div class="empty-pane">
+        <div class="eico">👈</div>
+        <p>Select a query from the list<br>to view details and reply</p>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+  JAVASCRIPT
+══════════════════════════════════════════════════════════ -->
+<script>
+/* ─────────────────────────────────────────
+  🔧 FIREBASE CONFIG
+  Replace these values with your own from:
+  console.firebase.google.com → Project Settings → Web App
+──────────────────────────────────────────*/
+const FB = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+
+/* ─────────────────────────────────────────
+  STATE
+──────────────────────────────────────────*/
+let db, auth, storage, user;
+let allQ = [], selId = null, unsub = null;
+let role = 'patient';
+const DEMO = FB.apiKey === "YOUR_API_KEY";
+
+/* ─────────────────────────────────────────
+  INIT
+──────────────────────────────────────────*/
+window.addEventListener('DOMContentLoaded', () => {
+  if (!DEMO) {
+    firebase.initializeApp(FB);
+    db      = firebase.firestore();
+    auth    = firebase.auth();
+    storage = firebase.storage();
+    auth.onAuthStateChanged(onAuth);
+  } else {
+    showPage('landing');
+    loadHeroStats();
+  }
+});
+
+function onAuth(u) {
+  user = u;
+  if (u) {
+    showNav(u.email);
+    db.collection('users').doc(u.uid).get().then(d => {
+      role = d.exists ? (d.data().role || 'patient') : 'patient';
+      if (role === 'doctor') { showPage('doctor'); startInbox(); }
+      else                   { showPage('patient'); }
+    });
+  } else {
+    hideNav();
+    showPage('landing');
+    loadHeroStats();
+  }
+}
+
+/* ─────────────────────────────────────────
+  HERO STATS (live from Firestore)
+──────────────────────────────────────────*/
+function loadHeroStats() {
+  if (DEMO) {
+    document.getElementById('heroTotal').textContent   = '142';
+    document.getElementById('heroReplied').textContent = '138';
+    return;
+  }
+  db.collection('queries').get().then(s => {
+    document.getElementById('heroTotal').textContent   = s.size;
+    document.getElementById('heroReplied').textContent = s.docs.filter(d=>d.data().status==='replied').length;
+  });
+}
+
+/* ─────────────────────────────────────────
+  NAVIGATION HELPERS
+──────────────────────────────────────────*/
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active','page-enter'));
+  const p = document.getElementById('page-'+name);
+  p.classList.add('active');
+  setTimeout(() => p.classList.add('page-enter'), 10);
+}
+function showNav(email) {
+  document.getElementById('navUser').textContent   = email;
+  document.getElementById('navUser').style.display = 'block';
+  document.getElementById('navLogout').style.display = 'block';
+}
+function hideNav() {
+  document.getElementById('navUser').style.display   = 'none';
+  document.getElementById('navLogout').style.display = 'none';
+}
+function goAuth(r) { role = r; setRole(r, document.getElementById(r==='patient'?'rolePatient':'roleDoctor')); showPage('auth'); }
+
+/* ─────────────────────────────────────────
+  AUTH
+──────────────────────────────────────────*/
+function setRole(r, btn) {
+  role = r;
+  document.querySelectorAll('.rtbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+function toggleReg(show) {
+  document.getElementById('formSignIn').style.display    = show ? 'none' : 'block';
+  document.getElementById('formRegister').style.display = show ? 'block' : 'none';
+}
+async function doSignIn() {
+  if (DEMO) { demoLogin(); return; }
+  const e = v('siEmail'), p = v('siPass');
+  if (!e||!p) { authErr('Enter email and password'); return; }
+  try { await auth.signInWithEmailAndPassword(e,p); toast('✓ Signed in','ok'); }
+  catch(err) { authErr(err.message); }
+}
+async function doRegister() {
+  if (DEMO) { demoLogin(); return; }
+  const n=v('regName'), e=v('regEmail'), p=v('regPass');
+  if (!n||!e||!p) { authErr('All fields required'); return; }
+  try {
+    const c = await auth.createUserWithEmailAndPassword(e,p);
+    await c.user.updateProfile({displayName:n});
+    await db.collection('users').doc(c.user.uid).set({name:n,email:e,role:'patient',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    toast('✓ Account created! Welcome '+n,'ok');
+  } catch(err) { authErr(err.message); }
+}
+async function doLogout() {
+  if (!DEMO) await auth.signOut();
+  user=null; hideNav(); showPage('landing');
+  if (unsub) { unsub(); unsub=null; }
+}
+function authErr(msg) {
+  const el = document.getElementById('authErr');
+  el.textContent = '⚠ '+msg; el.classList.add('on');
+  setTimeout(() => el.classList.remove('on'), 4000);
+}
+function demoLogin() {
+  showNav('demo@mediconnect.in');
+  if (role==='doctor') { showPage('doctor'); loadDemoInbox(); }
+  else                  { showPage('patient'); }
+}
+
+/* ─────────────────────────────────────────
+  PATIENT — SUBMIT QUERY
+──────────────────────────────────────────*/
+async function submitQuery(e) {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> &nbsp;Sending…';
+
+  const pb = document.getElementById('progBar');
+  const pf = document.getElementById('progFill');
+  pb.classList.add('on'); pf.style.width = '15%';
+
+  // Update step indicators
+  advanceSteps();
+
+  const allergies  = [...document.querySelectorAll('input[name="allergy"]:checked')].map(x=>x.value);
+  const conditions = [...document.querySelectorAll('input[name="condition"]:checked')].map(x=>x.value);
+  const rtypes     = [...document.querySelectorAll('input[name="rtype"]:checked')].map(x=>x.value);
+  const priority   = document.querySelector('input[name="priority"]:checked')?.value || 'routine';
+
+  const qdata = {
+    patientName:  v('p_name'),
+    dob:          v('p_dob'),
+    phone:        v('p_phone'),
+    patientId:    v('p_pid'),
+    doctor:       v('p_doctor'),
+    bloodGroup:   v('p_blood'),
+    height:       v('p_height'),
+    weight:       v('p_weight'),
+    medications:  v('p_meds'),
+    allergies, conditions, rtypes, priority,
+    queryType:    v('p_qtype'),
+    symptoms:     v('p_symptoms'),
+    questions:    v('p_questions'),
+    fileNotes:    v('p_fnotes'),
+    status:       'new',
+    doctorReply:  '',
+    repliedAt:    null,
+    patientEmail: user?.email || 'demo@patient.com',
+    patientUid:   user?.uid   || 'demo-uid',
+    attachments:  [],
+    submittedAt:  DEMO ? new Date().toISOString() : firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  pf.style.width = '45%';
+
+  // Upload files
+  const files = document.getElementById('fileInput').files;
+  if (!DEMO && files.length > 0) {
+    for (const f of files) {
+      try {
+        const ref  = storage.ref(`reports/${user.uid}/${Date.now()}_${f.name}`);
+        const snap = await ref.put(f);
+        const url  = await snap.ref.getDownloadURL();
+        qdata.attachments.push({ name: f.name, url });
+      } catch(err) { toast('File error: '+f.name,'err'); }
+    }
+  }
+
+  pf.style.width = '80%';
+
+  if (!DEMO) {
+    try {
+      await db.collection('queries').add(qdata);
+      pf.style.width = '100%';
+      setTimeout(() => { pb.classList.remove('on'); pf.style.width='0%'; }, 700);
+      showSuccess();
+    } catch(err) { toast('Error: '+err.message,'err'); resetSubmitBtn(); }
+  } else {
+    pf.style.width = '100%';
+    setTimeout(() => { pb.classList.remove('on'); pf.style.width='0%'; }, 700);
+    showSuccess();
+  }
+}
+
+function showSuccess() {
+  document.getElementById('patientForm').style.display = 'none';
+  document.querySelector('.step-bar').style.display     = 'none';
+  document.querySelector('.form-page-head').style.display = 'none';
+  const el = document.getElementById('successScreen');
+  el.classList.add('on');
+  toast('✓ Query delivered to your doctor!','ok');
+}
+function resetForm() {
+  document.getElementById('patientForm').reset();
+  document.getElementById('patientForm').style.display = '';
+  document.querySelector('.step-bar').style.display     = '';
+  document.querySelector('.form-page-head').style.display = '';
+  document.getElementById('successScreen').classList.remove('on');
+  document.getElementById('filePreview').innerHTML = '';
+  resetSubmitBtn();
+  resetSteps();
+}
+function resetSubmitBtn() {
+  const b = document.getElementById('submitBtn');
+  b.disabled = false; b.innerHTML = 'Send to Doctor &nbsp;→';
+}
+
+/* ─────────────────────────────────────────
+  STEP PROGRESS
+──────────────────────────────────────────*/
+function advanceSteps() {
+  ['st1','st2','st3','st4'].forEach((id,i) => {
+    const el = document.getElementById(id);
+    el.classList.remove('active');
+    setTimeout(() => { el.classList.add('done'); }, i*200);
+  });
+  ['sl1','sl2','sl3'].forEach((id,i) => {
+    setTimeout(() => document.getElementById(id)?.classList.add('done'), i*200+100);
+  });
+}
+function resetSteps() {
+  ['st1','st2','st3','st4'].forEach(id => { document.getElementById(id).classList.remove('done','active'); });
+  ['sl1','sl2','sl3'].forEach(id => { document.getElementById(id)?.classList.remove('done'); });
+  document.getElementById('st1').classList.add('active');
+}
+
+/* ─────────────────────────────────────────
+  MY QUERIES (patient history)
+──────────────────────────────────────────*/
+async function showMyQueries() {
+  showPage('myqueries');
+  const el = document.getElementById('mqList');
+  el.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--text3)"><span class="spin" style="width:30px;height:30px;border-width:3px;color:var(--cyan)"></span></div>';
+
+  if (DEMO) { renderMQ(DEMO_DATA); return; }
+
+  try {
+    const snap = await db.collection('queries')
+      .where('patientUid','==', user.uid)
+      .orderBy('submittedAt','desc').get();
+    renderMQ(snap.docs.map(d=>({id:d.id,...d.data()})));
+  } catch(e) { el.innerHTML = `<p style="color:var(--rose);padding:1rem">${e.message}</p>`; }
+}
+function renderMQ(docs) {
+  const el = document.getElementById('mqList');
+  if (!docs.length) {
+    el.innerHTML = '<div class="empty-pane"><div class="eico">📭</div><p>No queries submitted yet.</p></div>';
+    return;
+  }
+  el.innerHTML = docs.map((q,i) => `
+    <div class="mq-item" style="animation-delay:${i*0.06}s">
+      <div class="mq-head">
+        <div>
+          <div class="mq-title">${q.queryType} — to ${q.doctor}</div>
+          <div class="mq-sub">${formatTime(q.submittedAt)}</div>
+        </div>
+        <span class="badge ${q.status==='replied'?'b-replied':q.priority==='urgent'?'b-urgent':'b-new'}">${q.status==='replied'?'Replied':q.priority}</span>
+      </div>
+      <div class="mq-body">${(q.symptoms||'').slice(0,240)}${(q.symptoms||'').length>240?'…':''}</div>
+      ${q.doctorReply
+        ? `<div class="dr-reply"><span class="dr-reply-label">🩺 Doctor's Reply</span>${q.doctorReply}</div>`
+        : `<div class="awaiting"><span class="spin" style="color:var(--text3);width:14px;height:14px;border-width:2px"></span> Awaiting doctor's reply…</div>`}
+    </div>
+  `).join('');
+}
+
+/* ─────────────────────────────────────────
+  DOCTOR DASHBOARD — REAL-TIME INBOX
+──────────────────────────────────────────*/
+function startInbox() {
+  if (DEMO) { loadDemoInbox(); return; }
+  if (unsub) unsub();
+  unsub = db.collection('queries').orderBy('submittedAt','desc')
+    .onSnapshot(snap => {
+      allQ = snap.docs.map(d=>({id:d.id,...d.data()}));
+      updateStats(); renderInbox(allQ);
+    }, err => toast('DB error: '+err.message,'err'));
+}
+function loadDemoInbox() { allQ = DEMO_DATA; updateStats(); renderInbox(allQ); }
+
+function updateStats() {
+  document.getElementById('sTotal').textContent   = allQ.length;
+  document.getElementById('sNew').textContent     = allQ.filter(q=>q.status==='new').length;
+  document.getElementById('sUrgent').textContent  = allQ.filter(q=>q.priority==='urgent').length;
+  document.getElementById('sReplied').textContent = allQ.filter(q=>q.status==='replied').length;
+}
+function filterQ(type, btn) {
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const f = type==='all'?allQ:type==='new'?allQ.filter(q=>q.status==='new'):allQ.filter(q=>q.priority==='urgent');
+  renderInbox(f);
+}
+function renderInbox(list) {
+  const el = document.getElementById('inboxList');
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-pane" style="height:180px"><div class="eico">📭</div><p>No queries</p></div>';
+    return;
+  }
+  el.innerHTML = list.map((q,i) => `
+    <div class="qcard ${q.id===selId?'sel':''}" onclick="openQ('${q.id}')" style="animation-delay:${i*0.05}s">
+      ${q.status==='new'?'<div class="unread-dot"></div>':''}
+      <div class="qcard-name">${q.patientName}</div>
+      <div class="qcard-sub">${q.queryType}</div>
+      <div class="qcard-foot">
+        <span class="badge ${q.priority==='urgent'?'b-urgent':q.status==='replied'?'b-replied':'b-new'}">${q.priority==='urgent'?'🔴 Urgent':q.status==='replied'?'✓ Replied':'● New'}</span>
+        <span class="qcard-time">${formatTime(q.submittedAt)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+function openQ(id) {
+  selId = id;
+  const q = allQ.find(x=>x.id===id);
+  if (!q) return;
+  renderInbox(allQ);
+
+  const ini = (q.patientName||'P').split(' ').map(w=>w[0]).join('').slice(0,2);
+  const att = (q.attachments||[]).length
+    ? q.attachments.map(a=>`<a class="report-link" href="${a.url}" target="_blank">📄 ${a.name}</a>`).join('')
+    : '<span style="font-size:0.78rem;color:var(--text3)">No files attached</span>';
+
+  const replyHTML = q.status==='replied'
+    ? `<div class="reply-zone">
+        <label>Your Reply (Sent)</label>
+        <div style="background:var(--cyan-dim);border:1px solid rgba(0,212,184,0.2);border-radius:12px;padding:1rem;font-size:0.86rem;color:var(--text);line-height:1.7">${q.doctorReply}</div>
+       </div>`
+    : `<div class="reply-zone">
+        <label>Write Your Reply</label>
+        <textarea id="replyTxt" placeholder="Type your medical response — diagnosis, advice, prescription changes, follow-up instructions, lifestyle guidance…"></textarea>
+        <div class="reply-actions">
+          <button class="rbtn rbtn-flag" onclick="flagQ('${id}')">🚩 Flag</button>
+          <button class="rbtn rbtn-main" onclick="sendReply('${id}')">Send Reply →</button>
+        </div>
+       </div>`;
+
+  document.getElementById('detailPane').innerHTML = `
+    <div class="detail-top">
+      <div class="pat-row">
+        <div class="avatar">${ini}</div>
+        <div>
+          <div class="pat-name">${q.patientName}</div>
+          <div class="pat-sub">${q.patientEmail} · DOB: ${q.dob||'N/A'} · ${q.phone||'—'}</div>
+        </div>
+        <span class="badge ${q.priority==='urgent'?'b-urgent':q.status==='replied'?'b-replied':'b-new'}" style="margin-left:auto">${q.priority}</span>
+      </div>
+    </div>
+    <div class="detail-body">
+      <div class="meta-row">
+        <div class="meta-pill">Query: <b>${q.queryType}</b></div>
+        <div class="meta-pill">Doctor: <b>${q.doctor}</b></div>
+        <div class="meta-pill">Blood: <b>${q.bloodGroup||'N/A'}</b></div>
+        <div class="meta-pill">Ht/Wt: <b>${q.height||'—'}cm / ${q.weight||'—'}kg</b></div>
+        <div class="meta-pill">Meds: <b>${q.medications||'None'}</b></div>
+        <div class="meta-pill">Conditions: <b>${(q.conditions||[]).join(', ')||'None'}</b></div>
+        <div class="meta-pill">Allergies: <b>${(q.allergies||[]).join(', ')||'None'}</b></div>
+        <div class="meta-pill">Reports: <b>${(q.rtypes||[]).join(', ')||'None attached'}</b></div>
+      </div>
+      <div class="section-h">Patient's Symptoms</div>
+      <div class="query-bubble">${q.symptoms||'—'}</div>
+      ${q.questions?`<div class="section-h" style="margin-top:1.25rem">Specific Questions</div><div class="query-bubble" style="border-color:var(--gold)">${q.questions}</div>`:''}
+      <div class="section-h" style="margin-top:1.25rem">Attached Reports</div>
+      <div class="report-row">${att}</div>
+      ${q.fileNotes?`<div style="font-size:0.78rem;color:var(--text2);margin-top:8px;font-style:italic">Note: ${q.fileNotes}</div>`:''}
+    </div>
+    ${replyHTML}
+  `;
+}
+
+async function sendReply(id) {
+  const txt = document.getElementById('replyTxt')?.value?.trim();
+  if (!txt) { toast('Write a reply first','err'); return; }
+  const btn = document.querySelector('.rbtn-main');
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
+
+  if (!DEMO) {
+    try {
+      await db.collection('queries').doc(id).update({
+        doctorReply: txt,
+        status: 'replied',
+        repliedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      toast('✓ Reply sent to patient!','ok');
+    } catch(e) { toast('Error: '+e.message,'err'); return; }
+  } else {
+    const q = allQ.find(x=>x.id===id);
+    if (q) { q.doctorReply=txt; q.status='replied'; }
+    toast('✓ Reply sent!','ok');
+    updateStats(); renderInbox(allQ);
+  }
+  openQ(id);
+}
+async function flagQ(id) {
+  if (!DEMO) { try { await db.collection('queries').doc(id).update({status:'flagged'}); } catch(e){} }
+  const q = allQ.find(x=>x.id===id);
+  if (q) q.status = 'flagged';
+  toast('Flagged for follow-up','info');
+  updateStats(); renderInbox(allQ);
+}
+
+/* ─────────────────────────────────────────
+  FILE PREVIEW
+──────────────────────────────────────────*/
+function previewFiles(inp) {
+  const el = document.getElementById('filePreview');
+  el.innerHTML = [...inp.files].map((f,i) =>
+    `<div class="fpchip" style="animation-delay:${i*0.08}s">📄 ${f.name}</div>`
+  ).join('');
+}
+
+/* ─────────────────────────────────────────
+  TOAST
+──────────────────────────────────────────*/
+let toastTimer;
+function toast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast '+type+' on';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className='toast '+type, 3500);
+}
+
+/* ─────────────────────────────────────────
+  UTILS
+──────────────────────────────────────────*/
+function v(id) { return (document.getElementById(id)?.value||'').trim(); }
+function formatTime(ts) {
+  if (!ts) return '';
+  let d;
+  if (ts?.toDate) d = ts.toDate();
+  else if (typeof ts==='string') d = new Date(ts);
+  else d = new Date();
+  const diff = (Date.now()-d.getTime())/1000;
+  if (diff<60) return 'just now';
+  if (diff<3600) return Math.floor(diff/60)+'m ago';
+  if (diff<86400) return Math.floor(diff/3600)+'h ago';
+  return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+}
+
+/* ─────────────────────────────────────────
+  DEMO DATA
+──────────────────────────────────────────*/
+const DEMO_DATA = [
+  {
+    id:'d1', patientName:'Priya Sharma', patientEmail:'priya@example.com',
+    dob:'1991-03-15', phone:'+91 98765 43210',
+    doctor:'Dr. Anita Sharma — Cardiology',
+    bloodGroup:'B+', height:'163', weight:'58',
+    medications:'Metformin 500mg', conditions:['Diabetes'], allergies:['None'],
+    rtypes:['Blood Test'], queryType:'Report Review / Interpretation',
+    priority:'moderate', status:'new', doctorReply:'',
+    symptoms:'My HbA1c came back at 7.8 (was 6.9 three months ago). I have been strictly following the prescribed diet and walking 30 mins daily. My fasting sugar is consistently above 130 in the mornings. Attached are blood reports from this week and last month for comparison.',
+    questions:'Should I increase my Metformin dosage? Are there dietary changes I should make immediately?',
+    fileNotes:'Report 1 is from 3 days ago, Report 2 is from Oct for comparison.',
+    attachments:[], submittedAt:new Date(Date.now()-12*60000).toISOString()
+  },
+  {
+    id:'d2', patientName:'Rahul Mehta', patientEmail:'rahul@example.com',
+    dob:'1973-07-22', phone:'+91 87654 32109',
+    doctor:'Dr. Ravi Mehta — General Medicine',
+    bloodGroup:'O+', height:'175', weight:'82',
+    medications:'Amlodipine 5mg', conditions:['Hypertension'], allergies:['Aspirin'],
+    rtypes:['ECG'], queryType:'Symptom Consultation',
+    priority:'urgent', status:'new', doctorReply:'',
+    symptoms:'Sharp chest pain on the left side for the past 2 days. Pain worsens during physical activity and sometimes radiates to my left arm. No known heart condition but my father had a heart attack at 58. Pain is about 7/10 severity at its worst.',
+    questions:'Is this a cardiac emergency? Should I go to A&E immediately? Attached is an ECG done at the local clinic yesterday.',
+    fileNotes:'ECG done at Lifeline Diagnostics yesterday morning.',
+    attachments:[], submittedAt:new Date(Date.now()-34*60000).toISOString()
+  },
+  {
+    id:'d3', patientName:'Anita Kapoor', patientEmail:'anita@example.com',
+    dob:'1984-11-08', phone:'+91 76543 21098',
+    doctor:'Dr. Sunita Patel — Endocrinology',
+    bloodGroup:'A+', height:'158', weight:'55',
+    medications:'Eltroxin 50mcg', conditions:['Thyroid'], allergies:['None'],
+    rtypes:['Blood Test'], queryType:'Follow-up / Post-procedure',
+    priority:'routine', status:'replied',
+    doctorReply:'Excellent progress! Your TSH of 1.2 is now in the optimal range (0.5–4.0 mIU/L). Please continue Eltroxin 50mcg for another 3 months — do not change the dose without consulting me. For the persistent hair loss: thyroid-related hair loss typically resolves 3–6 months after TSH normalises. I am adding Biotin 5000mcg daily to your regimen — take it in the morning with food. Please repeat TFT + serum ferritin in 3 months. If hair loss continues after that, we will investigate further. Stay hydrated and maintain your current diet. Well done!',
+    symptoms:'My latest TFT shows TSH at 1.2 (down from 4.8 three months ago). I am feeling significantly better — less fatigue, better concentration. However, hair loss continues despite the improved TSH values.',
+    questions:'Should we maintain or reduce the Eltroxin dosage? Is there anything specific I can do about the hair loss?',
+    fileNotes:'TFT report from this week attached.',
+    attachments:[], submittedAt:new Date(Date.now()-3*3600000).toISOString()
+  }
+];
+</script>
+</body>
+</html>
